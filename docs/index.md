@@ -44,67 +44,134 @@ toc: false
 
 </style>
 
-<div class="hero">
-  <h1>Hello, Observable Framework</h1>
-  <h2>Welcome to your new project! Edit&nbsp;<code style="font-size: 90%;">docs/index.md</code> to change this page.</h2>
-  <a href="https://observablehq.com/framework/getting-started" target="_blank">Get started<span style="display: inline-block; margin-left: 0.25rem;">↗︎</span></a>
-</div>
+```js
+import * as duckdb from "npm:@duckdb/duckdb-wasm";
 
-<div class="grid grid-cols-2" style="grid-auto-rows: 504px;">
-  <div class="card">${
-    resize((width) => Plot.plot({
-      title: "Your awesomeness over time 🚀",
-      subtitle: "Up and to the right!",
-      width,
-      y: {grid: true, label: "Awesomeness"},
-      marks: [
-        Plot.ruleY([0]),
-        Plot.lineY(aapl, {x: "Date", y: "Close", tip: true})
-      ]
-    }))
-  }</div>
-  <div class="card">${
-    resize((width) => Plot.plot({
-      title: "How big are penguins, anyway? 🐧",
-      width,
-      grid: true,
-      x: {label: "Body mass (g)"},
-      y: {label: "Flipper length (mm)"},
-      color: {legend: true},
-      marks: [
-        Plot.linearRegressionY(penguins, {x: "body_mass_g", y: "flipper_length_mm", stroke: "species"}),
-        Plot.dot(penguins, {x: "body_mass_g", y: "flipper_length_mm", stroke: "species", tip: true})
-      ]
-    }))
-  }</div>
-</div>
+const db = DuckDBClient.of({ 
+    count_inst: FileAttachment("./data/count_inst.parquet"),
+    png_v_pdf: FileAttachment("./data/pdf_pages_v_png_count.parquet"),
+    failed_test: FileAttachment("./data/missing_tot_pages.parquet"),
+    })
+```
+
+# The-CAT-DB
+## The state of the catDB
+
+```js
+const dat = db.query(`SELECT * FROM count_inst`)
+const dat2 = db.query(`SELECT * FROM png_v_pdf`)
+const dat_test = db.query(`SELECT * FROM failed_test`)
+const uniq_ror = db.query(`SELECT DISTINCT(ror) FROM png_v_pdf ORDER BY ror`)
+const min_years = db.query(`SELECT MIN(year_1) as min_yr, ror FROM png_v_pdf GROUP BY ror`)
+```
+
+```js
+let out = {};
+min_years.forEach(row => {
+    const ror = row.ror;
+    const minYear = row.min_yr;
+    out[ror] = +minYear;
+});
+```
+
+```js
+Plot.barX(dat, {x: 'pdf_count', y: "ror" }).plot({marginLeft: 100})
+```
+
+## Looking at specific institution
+
+```js
+const sel_inst = view(Inputs.select(uniq_ror.map(d => d['ror'])))
+```
+```js
+const sel_yr = view(Inputs.range([ out[sel_inst], 2023], {step: 1, value: out[sel_inst]}))
+const parseTime = d3.utcParse("%Y");
+```
+
+```js
+Plot.plot({
+    width: 1200,
+    color: {legend: true},
+    y: { grid: true, },
+    x: {axis: null },
+    fx: {tickRotate: 40, label: null },
+    marks: [
+        Plot.barY(
+            dat2.filter(d => d.year_1 > sel_yr & d.ror == sel_inst),
+            {x: "type", y:"value", fx: "year_1", fill: "type"},
+        )
+  ]
+})
+```
+
+## Summary tests
+
+- `catalog_count_equal_pdf_count`: same number of catalog entries and PDFs for a given ROR.
+- `pdf_has_tot_pages_field`: PDF files have a `tot_pages` field in their metadata.
+- `pdf_gridfs_integrity`: each PDF file is readable in the database. 
+- `pdf_tot_pages_equal_png_count`: total number of pages in PDFs matches the number of PNGs for a given ROR.
+- `png_count_equal_text_count`: count of text files is equal to the sum of PNG and PDF files for a given ROR and converter.
+- `text_availability`: how much text is available for each pdf
+
+Our tests they mostly follow the same file nameing patterns. They are trying to specify which _collection_ is being tested and how. There is some ordering in the testing order. 
+
+```
+catalog > pdf > png > text
+```
+
+This make sense. When a scraper fails, we still have the `catalog` entry. Thus we can test if `pdfs` are missing from the `catalog` entries. Similarly, something can happen with `png` failing to be uploaded if something is up with the corresponding `pdfs`. Finally, `text` entries are the last collection in that directed acyclic graphs, vulnerable to any mistake upstream.
+
+## Failed tests
+
+```js
+view(Inputs.table(dat_test))
+```
+
+## Schema
+
+```js
+mermaid`
+classDiagram
+Catalog --|> Png
+Pdf --|> Png
+Pdf --|> Text
+Png --|> Text 
+Catalog : 🔤 id
+Catalog : 🔤 metadata_inst_id
+Catalog : 🔢 metadata_start_year
+Catalog : 🔢 metadata_end_year
+Catalog : 🔤 metadata_cat_type
+Catalog : 🔢 metadata_semester
+Catalog : 🔤 metadata_college
+Pdf : 🔤 id
+Pdf : 🔤 metadata_inst_id
+Pdf : 🔤 metadata_catalog_id
+Pdf : 🔤 metadata_ref
+Pdf : 🔢 metadata_tot_pages
+Png : 🔤 id
+Png : 🔤 metadata_inst_id
+Png : 🔤 metadata_catalog_id
+Png : 🔤 metadata_pdf_id
+Png : 🔢 metadata_page
+Text : 🔤 id
+Text : 🔤 text
+Text : 🔤 metadata_inst_id
+Text : 🔤 metadata_catalog_id
+Text : 🔤 metadata_pdf_id
+Text : 🔤 metadata_png_id
+Text : 🔢 metadata_page
+Text : 🔤 metadata_conversion
+Text : 🔤 metadata_annotated
+Institutions_oa : 🔤 id
+Institutions_oa : 🔤 ror
+Institutions_oa : 🔤 display_name
+Institutions_oa : 🔤 country_code
+Institutions_oa : 🔤 type
+Institutions_oa : 🔤 geo_city
+Institutions_oa : 🔤 geo_region
+Institutions_oa : 🔢 geo_latitude
+Institutions_oa : 🔢 geo_longitude
+`
+```
 
 ---
-
-## Next steps
-
-Here are some ideas of things you could try…
-
-<div class="grid grid-cols-4">
-  <div class="card">
-    Chart your own data using <a href="https://observablehq.com/framework/lib/plot"><code>Plot</code></a> and <a href="https://observablehq.com/framework/javascript/files"><code>FileAttachment</code></a>. Make it responsive using <a href="https://observablehq.com/framework/javascript/display#responsive-display"><code>resize</code></a>.
-  </div>
-  <div class="card">
-    Create a <a href="https://observablehq.com/framework/routing">new page</a> by adding a Markdown file (<code>whatever.md</code>) to the <code>docs</code> folder.
-  </div>
-  <div class="card">
-    Add a drop-down menu using <a href="https://observablehq.com/framework/javascript/inputs"><code>Inputs.select</code></a> and use it to filter the data shown in a chart.
-  </div>
-  <div class="card">
-    Write a <a href="https://observablehq.com/framework/loaders">data loader</a> that queries a local database or API, generating a data snapshot on build.
-  </div>
-  <div class="card">
-    Import a <a href="https://observablehq.com/framework/javascript/imports">recommended library</a> from npm, such as <a href="https://observablehq.com/framework/lib/leaflet">Leaflet</a>, <a href="https://observablehq.com/framework/lib/dot">GraphViz</a>, <a href="https://observablehq.com/framework/lib/tex">TeX</a>, or <a href="https://observablehq.com/framework/lib/duckdb">DuckDB</a>.
-  </div>
-  <div class="card">
-    Ask for help, or share your work or ideas, on the <a href="https://talk.observablehq.com/">Observable forum</a>.
-  </div>
-  <div class="card">
-    Visit <a href="https://github.com/observablehq/framework">Framework on GitHub</a> and give us a star. Or file an issue if you’ve found a bug!
-  </div>
-</div>
