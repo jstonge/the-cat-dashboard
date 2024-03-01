@@ -50,11 +50,11 @@ import * as duckdb from "npm:@duckdb/duckdb-wasm";
 
 const db = DuckDBClient.of({ 
     count_inst: FileAttachment("./data/count_inst.parquet"),
-    png_v_pdf: FileAttachment("./data/pdf_pages_v_png_count.parquet")
+    png_v_pdf: FileAttachment("./data/pdf_pages_v_png_count.parquet"),
+    inst_geo: FileAttachment("./data/inst_geo.parquet")
     })
 
 const us = FileAttachment("./data/us-counties-10m.json").json()
-const inst_meta = FileAttachment("./data/inst_meta.csv").csv({typed:true})
 ```
 
 # The-CAT-DB
@@ -64,6 +64,7 @@ const inst_meta = FileAttachment("./data/inst_meta.csv").csv({typed:true})
 const dat = db.query(`SELECT * FROM count_inst`)
 const dat2 = db.query(`SELECT * FROM png_v_pdf`)
 const dat_test = db.query(`SELECT * FROM failed_test`)
+const dat_geo = db.query(`SELECT * FROM inst_geo`)
 const uniq_ror = db.query(`SELECT DISTINCT(ror) FROM png_v_pdf ORDER BY ror`)
 const min_years = db.query(`SELECT MIN(year_1) as min_yr, ror FROM png_v_pdf GROUP BY ror`)
 ```
@@ -118,9 +119,9 @@ Plot.plot({
   marks: [
     Plot.geo(nation),
     Plot.geo(statemesh, {strokeOpacity: 0.2}),
-    Plot.dot(inst_meta, {x: "lng", y: "lat_x", r: d => d.nb_pdf, stroke: "nb_pdf"}),
-    Plot.tip(inst_meta, {
-      x: "lng", y: "lat_x", dy: -3, 
+    Plot.dot(dat_geo, {x: "lon", y: "lat", r: 3}),
+    Plot.tip(dat_geo, {
+      x: "lon", y: "lat", dy: -3, 
       title: d => d.name, 
     })
   ]
