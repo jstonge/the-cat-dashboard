@@ -1,5 +1,6 @@
 ---
 toc: false
+theme: "cotton"
 ---
 
 <style>
@@ -49,9 +50,11 @@ import * as duckdb from "npm:@duckdb/duckdb-wasm";
 
 const db = DuckDBClient.of({ 
     count_inst: FileAttachment("./data/count_inst.parquet"),
-    png_v_pdf: FileAttachment("./data/pdf_pages_v_png_count.parquet"),
-    failed_test: FileAttachment("./data/missing_tot_pages.parquet"),
+    png_v_pdf: FileAttachment("./data/pdf_pages_v_png_count.parquet")
     })
+
+const us = FileAttachment("./data/us-counties-10m.json").json()
+const inst_meta = FileAttachment("./data/inst_meta.csv").csv({typed:true})
 ```
 
 # The-CAT-DB
@@ -104,6 +107,34 @@ Plot.plot({
 })
 ```
 
+## Spatial distribution
+
+```js
+Plot.plot({
+  marginLeft: 160,
+  width: 1200,
+  color: { legend: true },
+  projection: "albers-usa",
+  marks: [
+    Plot.geo(nation),
+    Plot.geo(statemesh, {strokeOpacity: 0.2}),
+    Plot.dot(inst_meta, {x: "lng", y: "lat_x", r: d => d.nb_pdf, stroke: "nb_pdf"}),
+    Plot.tip(inst_meta, {
+      x: "lng", y: "lat_x", dy: -3, 
+      title: d => d.name, 
+    })
+  ]
+})
+```
+
+```js
+let nation = topojson.feature(us, us.objects.nation)
+```
+
+```js
+let statemesh = topojson.mesh(us, us.objects.states)
+```
+
 ## Summary tests
 
 - `catalog_count_equal_pdf_count`: same number of catalog entries and PDFs for a given ROR.
@@ -121,11 +152,6 @@ catalog > pdf > png > text
 
 This make sense. When a scraper fails, we still have the `catalog` entry. Thus we can test if `pdfs` are missing from the `catalog` entries. Similarly, something can happen with `png` failing to be uploaded if something is up with the corresponding `pdfs`. Finally, `text` entries are the last collection in that directed acyclic graphs, vulnerable to any mistake upstream.
 
-## Failed tests
-
-```js
-view(Inputs.table(dat_test))
-```
 
 ## Schema
 

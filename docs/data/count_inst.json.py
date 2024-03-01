@@ -6,10 +6,9 @@ cat_db = catDB()
 
 #### ROR ~ PDF_COUNT ####
 
+
 count_inst = cat_db.count(agg_field="inst_id", collection="cc_catalog")
-
 df = pd.DataFrame({'ror': count_inst.keys(), 'pdf_count': count_inst.values()})
-
 df.to_parquet('count_inst.parquet')
 
 
@@ -38,19 +37,3 @@ df2[['ror', 'cat_type', 'year_1', 'year_2']] = df2.pdfid.str.split("_", expand=T
 
 df2.to_parquet(f'pdf_pages_v_png_count.parquet')
 
-
-
-## Test
-
-rors = list(cat_db.count(agg_field="inst_id", collection="cc_catalog").keys())
-missing_tot_pages = []
-for ror in rors:
-   pdf_obj = cat_db.find(ror, "inst_id", 'cc_pdf')
-   pdf_obj_wo_tot_pages = [pdf['id'] for pdf in pdf_obj if 'tot_pages' not in pdf['metadata']]
-   if (len(pdf_obj) - len(pdf_obj_wo_tot_pages)) != len(pdf_obj):
-      for _ in pdf_obj:
-         if 'tot_pages' not in _['metadata']:
-            missing_tot_pages.append(_['id'])
-
-df1 = pd.DataFrame({'failed test': 'pdf_has_tot_pages_field' ,'id': missing_tot_pages})
-df1.to_parquet('missing_tot_pages.parquet')
