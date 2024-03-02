@@ -52,10 +52,13 @@ pd.DataFrame(inst_obj, columns=['lon', 'lat', 'name']).to_parquet("inst_geo.parq
 import pandas as pd
 
 df1=pd.read_csv("List_of_wars_involving_the_United_States_3.csv")
+
 df1['Event'] = df1.Conflict.str.split("\n").map(lambda x: x[0]) 
 df1['Date'] = df1.Conflict.str.split("\n").map(lambda x: x[1])
+
 df1['Start_Year'] = df1['Date'].str.findall("\d{4}").map(lambda x: f"{x[0]}")
-df1['End_Year'] = df1['Date'].str.findall("\d{4}").map(lambda x: f"{x[1]}" if len(x) > 1 else x[0])
+df1['End_Year'] = df1['Date'].str.findall("\d{4}").map(lambda x: f"{x[-1]}" if len(x) > 1 else x[0])
+
 df1 = df1[['Event', 'End_Year', 'Start_Year']]
 df1['Start_Year'] = pd.to_datetime(df1['Start_Year'])
 df1['End_Year'] = pd.to_datetime(df1['End_Year'])
@@ -84,27 +87,45 @@ interpolated_df.to_parquet("us_wars.parquet")
 
 rors = list(cat_db.count(agg_field="inst_id", collection="cc_catalog").keys())
 
-def get_keyword(keyword):
-   pol_sci_freq = []
-   for ror in tqdm(rors):
-      foo = cat_db.find(id=ror, agg_field="inst_id", collection="cc_catalog")
-      for f in foo:
-         if 'tokens' in f:
-            pol_sci_count = f['tokens']['fitz'][keyword] if f['tokens']['fitz'].get(keyword) else 0
-            tot = sum(f['tokens']['fitz'].values())
-            if tot  == 0:
-               continue
-            freq = pol_sci_count / tot
-            pol_sci_freq.append((keyword, pol_sci_count, f['metadata']['start_year'], freq, ror))
+def token_over_time(inst_id: str, token: str, converter: str = 'fitz'):
+   """
+   List the count of given token each year for a given ror.
+   """
+   res=cat_db.find(inst_id, agg_field="inst_id", collection="cc_catalog")
+   inst_i = cat_db._db._db['institutions_oa'].find_one({"ror": f"https://ror.org/{inst_id}"})
+   out = []
+   for r in res:
+       print(r['id'])
+       if 'tokens' in r:
+           if converter in r['tokens']:
+               if token in r['tokens'][converter]:
+                   out.append(
+                       { "year": r['metadata']['start_year'],
+                         "token": token,
+                         "ror": inst_id,
+                         "count": r['tokens'][converter][token],
+                         "total_count": sum(list(r['tokens'][converter].values())),
+                         "cat_type": r['metadata']['type'] if 'type' in r['metadata'] else r['metadata']['cat_type'],
+                         "name": inst_i["display_name"]
+                       }
+                   )
+                   
+   return pd.DataFrame(out)
 
-   df=pd.DataFrame(pol_sci_freq, columns=['keyword', 'count', 'year', 'freq', 'ror'])
-   
-   df['year'] = pd.to_datetime(df.year, format='%Y')
-   
-   df = df.sort_values("year").reset_index(drop=True)
-   
-   return df
+# war-related; places
+# 'political science',
+keywords = ['russia', 'arabic', 'cold war', 'arab', 'islam', 'soviet', 'china', 'japan', 'korea', 'vietnam', 'india', 'pakistan', 'afghanistan', 'iran', 'iraq', 'syria']
+dfs = []
+for word in keywords:
+   for ror in ['02smfhw86', '0155zta11', '046rm7j60', '04a5szx83', '04ydmy275']:
+      dfs.append(token_over_time(ror, word))
 
-df = get_keyword('political science')
+   df = pd.concat(dfs, axis=0)
 
-df.to_parquet("pol_sci_freq.parquet")
+   df['year'] = pd.to_datetime(df.year, format='%Y', errors='coerce')
+   
+   df = df.sort_values(['ror', "year"]).reset_index(drop=True)
+
+   df.to_parquet(f"{word.replace(' ', '_')}_freq.parquet")
+
+keywords_ideology = ['communism', 'socialism', 'capitalism', 'fascism', 'liberalism', 'conservatism', 'anarchism']

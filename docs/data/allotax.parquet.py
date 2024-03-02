@@ -90,6 +90,9 @@ def get_df_allotax(ror: str, top_n:int = 10_000):
 
 
 df1 = get_df_allotax("0155zta11")
+
+df1
+
 df2 = get_df_allotax("01an7q238")
 
 df = pd.concat([df1, df2], axis=0)
